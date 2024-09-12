@@ -14,7 +14,19 @@ public class VFDDisplay {
     private Random random = new Random(); // Instância para gerar números aleatórios
 
     private long zeroValueInterval = 5; // Intervalo para mensagens quando o valor da comanda é zero (em segundos)
-    private long nonZeroValueInterval = 8; // Intervalo para mensagens quando o valor da comanda não é zero (em segundos)
+    private long nonZeroValueInterval = 1; // Intervalo para mensagens quando o valor da comanda não é zero (em segundos)
+
+    // Lista de mensagens para quando a venda for zero
+    private String[] zeroValueMessages = {
+            "Voltem sempre!!        ",
+            "Seja Bem Vindo!!      ",
+            "Aguardando novas    vendas.",
+            "Nada para exibir no momento.",
+            "Comanda vazia.         "
+    };
+
+    private int carouselIndex = 0; // Índice atual do carrossel
+    private boolean isCarouselMode = false; // Estado do carrossel
 
     // Método para conectar à porta serial usando jSerialComm
     public void connectSerial(String portName) {
@@ -74,7 +86,7 @@ public class VFDDisplay {
         return comandasValor;
     }
 
-    // Método para enviar mensagem ao VFD
+    // Método para enviar mensagem ao VFD com formatação
     public void sendToVFD(String message) {
         if (serialPort != null && serialPort.isOpen()) {
             try {
@@ -83,8 +95,9 @@ public class VFDDisplay {
                 // Limpar a tela antes de enviar uma nova mensagem
                 clearVFD(out);
 
-                // Enviar a mensagem para o display
-                out.write(message.getBytes("UTF-8")); // Especificando UTF-8 para evitar problemas de codificação
+                // Formatar e enviar a mensagem para o display
+                String formattedMessage = formatMessageForVFD(message);
+                out.write(formattedMessage.getBytes("UTF-8")); // Especificando UTF-8 para evitar problemas de codificação
                 out.flush();
             } catch (IOException e) {
                 System.err.println("Erro ao enviar mensagem para o VFD: " + e.getMessage());
@@ -94,55 +107,90 @@ public class VFDDisplay {
         }
     }
 
+    // Método para formatar a mensagem de acordo com as limitações do VFD
+    private String formatMessageForVFD(String message) {
+        int maxLength = 27; // Exemplo de limite de caracteres do VFD (ajustar conforme necessário)
+        String formattedMessage;
+
+        // Se a mensagem for maior que o tamanho permitido, faz a rolagem de texto
+        if (message.length() > maxLength) {
+            // Rolar o texto (apenas um exemplo simples, pode ser ajustado conforme necessário)
+            formattedMessage = message.substring(0, maxLength);
+        } else {
+            // Centralizar a mensagem se for menor que o limite
+            int padding = (maxLength - message.length()) / 2;
+            StringBuilder sb = new StringBuilder();
+
+            for (int i = 0; i < padding; i++) {
+                sb.append(" ");
+            }
+            sb.append(message);
+            formattedMessage = sb.toString();
+        }
+
+        return formattedMessage;
+    }
+
     // Método para limpar a tela do VFD
     private void clearVFD(OutputStream out) throws IOException {
-        byte[] clearCommand = new byte[]{0x0C};  // Exemplo de comando para limpar a tela
+        byte[] clearCommand = new byte[]{0x0C};  // Comando para limpar a tela
         out.write(clearCommand);
         out.flush();
     }
-
-    // Lista de mensagens para quando a venda for zero
-    private String[] zeroValueMessages = {
-            "Volte sempre!!",
-            "  Seja Bem Vindo!!",
-            "Aguardando novas     vendas.",
-            "Nada para exibir no momento.",
-            "Comanda vazia.",
-            "Venda zerada.       Verifique os itens."
-    };
 
     // Método para verificar e atualizar o VFD se necessário
     private void checkAndUpdateVFD() {
         String currentValue = getValorVenda(); // Obtém o valor atual da venda
 
-        // Se o valor da venda for 0 ou nulo, exibe uma mensagem aleatória da lista
         if (currentValue == null || currentValue.equals("0") || currentValue.equals("0.00")) {
-            String randomMessage = zeroValueMessages[random.nextInt(zeroValueMessages.length)];
+            // Modo Carrossel
+            isCarouselMode = true;
+            String currentMessage = zeroValueMessages[carouselIndex];
+            sendToVFD(currentMessage);
 
-            // Somente exibe a mensagem se for diferente da última exibida
-            if (!lastValue.equals(randomMessage)) {
-                sendToVFD(randomMessage);
-                lastValue = randomMessage; // Atualiza o último valor para evitar repetir a mensagem
+            // Atualizar o índice do carrossel para a próxima mensagem
+            carouselIndex = (carouselIndex + 1) % zeroValueMessages.length;
+            lastValue = currentMessage; // Atualiza o último valor para evitar repetir a mesma mensagem consecutivamente
+        } else {
+            // Modo Exibição de Valor
+            if (!currentValue.equals(lastValue)) {
+                isCarouselMode = false;
+                String formattedValue = "Valor R$" + currentValue;
+                sendToVFD(formattedValue);
+                lastValue = formattedValue; // Atualiza o último valor enviado
             }
-        } else if (!currentValue.equals(lastValue)) {
-            // Atualiza o display com o valor da venda se for diferente do último exibido
-            sendToVFD("Valor R$" + currentValue);
-            lastValue = currentValue; // Atualiza o último valor enviado
         }
     }
 
     // Método para iniciar a verificação periódica com intervalos variáveis
     public void startMonitoring() {
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-        scheduler.scheduleAtFixedRate(() -> {
-            checkAndUpdateVFD();
-            // Escolhe o intervalo de tempo com base no valor da comanda
-            long interval = (lastValue.equals("Volte sempre.") || lastValue.equals("Seja Bem vindo.") || lastValue.equals("Aguardando novas         vendas.")
-                    || lastValue.equals("Nada para exibir no momento.") || lastValue.equals("Comanda vazia.") || lastValue.equals("Venda zerada.       Verifique os itens.")) ?
-                    zeroValueInterval : nonZeroValueInterval;
-            scheduler.schedule(() -> checkAndUpdateVFD(), interval, TimeUnit.SECONDS);
-        }, 0, zeroValueInterval, TimeUnit.SECONDS);
+
+        // Definir a tarefa de verificação
+        Runnable checkTask = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // Verificar e atualizar o VFD
+                    checkAndUpdateVFD();
+
+                    // Escolher o intervalo de tempo com base no modo atual
+                    long interval = isCarouselMode ? zeroValueInterval : nonZeroValueInterval;
+
+                    // Agendar a próxima verificação com o intervalo apropriado
+                    scheduler.schedule(this, interval, TimeUnit.SECONDS);
+                } catch (Exception e) {
+                    System.err.println("Erro na tarefa de monitoramento: " + e.getMessage());
+                    // Opcional: Reagendar a tarefa mesmo em caso de erro
+                    scheduler.schedule(this, nonZeroValueInterval, TimeUnit.SECONDS);
+                }
+            }
+        };
+
+        // Iniciar a primeira verificação imediatamente
+        scheduler.schedule(checkTask, 0, TimeUnit.SECONDS);
     }
+
     // Método para fechar a conexão com o VFD
     public void closeSerial() {
         if (serialPort != null && serialPort.isOpen()) {
