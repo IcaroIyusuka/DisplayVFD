@@ -1,4 +1,3 @@
-
 import com.fazecast.jSerialComm.SerialPort;
 import java.io.OutputStream;
 import java.io.IOException;
@@ -15,7 +14,7 @@ public class VFDDisplay {
     private Random random = new Random(); // Instância para gerar números aleatórios
 
     private long zeroValueInterval = 5; // Intervalo para mensagens quando o valor da comanda é zero (em segundos)
-    private long nonZeroValueInterval = 1; // Intervalo para mensagens quando o valor da comanda não é zero (em segundos)
+    private long nonZeroValueInterval = 8; // Intervalo para mensagens quando o valor da comanda não é zero (em segundos)
 
     // Método para conectar à porta serial usando jSerialComm
     public void connectSerial(String portName) {

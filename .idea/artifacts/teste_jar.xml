@@ -1,0 +1,10 @@
+<component name="ArtifactManager">
+  <artifact type="jar" build-on-make="true" name="teste:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/teste_jar</output-path>
+    <root id="archive" name="teste.jar">
+      <element id="module-output" name="teste" />
+      <element id="extracted-dir" path="$PROJECT_DIR$/../../../../Documents/NetBeansProjects/testevfdte/dist/lib/mssql-jdbc-12.8.1.jre11.jar" path-in-jar="/" />
+      <element id="extracted-dir" path="$PROJECT_DIR$/../../../../Documents/NetBeansProjects/testevfdte/dist/lib/jSerialComm-2.11.0.jar" path-in-jar="/" />
+    </root>
+  </artifact>
+</component>
