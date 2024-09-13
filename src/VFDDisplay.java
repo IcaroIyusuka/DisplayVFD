@@ -13,8 +13,9 @@ public class VFDDisplay {
     private String lastValue = "0000"; // Armazena o último valor enviado ao VFD
     private Random random = new Random(); // Instância para gerar números aleatórios
 
-    private long zeroValueInterval = 5; // Intervalo para mensagens quando o valor da comanda é zero (em segundos)
+    private long zeroValueInterval = 1; // Intervalo para mensagens quando o valor da comanda é zero (em segundos)
     private long nonZeroValueInterval = 8; // Intervalo para mensagens quando o valor da comanda não é zero (em segundos)
+    private long temporaryMessageDuration = 1; // Tempo em segundos para exibir a mensagem temporária
 
     // Método para conectar à porta serial usando jSerialComm
     public void connectSerial(String portName) {
@@ -103,26 +104,27 @@ public class VFDDisplay {
 
     // Lista de mensagens para quando a venda for zero
     private String[] zeroValueMessages = {
-            "Volte sempre!!",
-            "  Seja Bem Vindo!!",
-            "Aguardando novas     vendas.",
-            "Nada para exibir no momento.",
-            "Comanda vazia.",
-            "Venda zerada.       Verifique os itens."
+            " Marquinho Lanches"
     };
 
-    // Método para verificar e atualizar o VFD se necessário
+    // Método para verificar e atualizar o VFD com mensagem temporária se o valor voltar a zero
     private void checkAndUpdateVFD() {
         String currentValue = getValorVenda(); // Obtém o valor atual da venda
 
-        // Se o valor da venda for 0 ou nulo, exibe uma mensagem aleatória da lista
+        // Se o valor da venda for 0 ou nulo, exibe uma mensagem temporária seguida de mensagem estática
         if (currentValue == null || currentValue.equals("0") || currentValue.equals("0.00")) {
-            String randomMessage = zeroValueMessages[random.nextInt(zeroValueMessages.length)];
+            if (!lastValue.equals("0")) {
+                // Exibe uma mensagem temporária "Venda zerada. Verifique os itens."
+                sendToVFD("  Volte sempre!!");
+                lastValue = "0"; // Atualiza o último valor
 
-            // Somente exibe a mensagem se for diferente da última exibida
-            if (!lastValue.equals(randomMessage)) {
-                sendToVFD(randomMessage);
-                lastValue = randomMessage; // Atualiza o último valor para evitar repetir a mensagem
+                // Aguarda alguns segundos antes de exibir a mensagem estática
+                ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+                scheduler.schedule(() -> {
+                    // Escolhe uma mensagem aleatória para exibir após a mensagem temporária
+                    String randomMessage = zeroValueMessages[random.nextInt(zeroValueMessages.length)];
+                    sendToVFD(randomMessage);
+                }, temporaryMessageDuration, TimeUnit.SECONDS);
             }
         } else if (!currentValue.equals(lastValue)) {
             // Atualiza o display com o valor da venda se for diferente do último exibido
@@ -136,13 +138,9 @@ public class VFDDisplay {
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
         scheduler.scheduleAtFixedRate(() -> {
             checkAndUpdateVFD();
-            // Escolhe o intervalo de tempo com base no valor da comanda
-            long interval = (lastValue.equals("Volte sempre.") || lastValue.equals("Seja Bem vindo.") || lastValue.equals("Aguardando novas         vendas.")
-                    || lastValue.equals("Nada para exibir no momento.") || lastValue.equals("Comanda vazia.") || lastValue.equals("Venda zerada.       Verifique os itens.")) ?
-                    zeroValueInterval : nonZeroValueInterval;
-            scheduler.schedule(() -> checkAndUpdateVFD(), interval, TimeUnit.SECONDS);
-        }, 0, zeroValueInterval, TimeUnit.SECONDS);
+        }, 0, zeroValueInterval, TimeUnit.SECONDS); // Usa zeroValueInterval como padrão para monitoramento constante
     }
+
     // Método para fechar a conexão com o VFD
     public void closeSerial() {
         if (serialPort != null && serialPort.isOpen()) {
