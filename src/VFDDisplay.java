@@ -50,11 +50,11 @@ public class VFDDisplay {
                 "(\n" +
                 "    SELECT ISNULL(SUM(valor), 0) AS valor \n" +
                 "    FROM Comandas_Itens \n" +
-                "    WHERE Comanda IN (SELECT Comanda FROM Comanda WHERE Posicao IS NOT NULL) AND STATUS IS NULL \n" +
+                "    WHERE Comanda IN (SELECT Comanda FROM Comanda WHERE Posicao IS NOT NULL OR Terminal IS NOT NULL) AND STATUS IS NULL \n" +
                 "    UNION \n" +
                 "    SELECT ISNULL(SUM(valor), 0) AS valor \n" +
                 "    FROM Comandas_Detalhes \n" +
-                "    WHERE Comanda IN (SELECT Comanda FROM Comanda WHERE Posicao IS NOT NULL)\n" +
+                "    WHERE Comanda IN (SELECT Comanda FROM Comanda WHERE Posicao IS NOT NULL OR Terminal IS NOT NULL) AND STATUS IS NULL\n" +
                 ") AS TESTE;";
 
         if (connection != null) {
@@ -95,7 +95,7 @@ public class VFDDisplay {
         }
     }
 
-    // Método para limpar a tela do VFD
+    //Método para limpar a tela do VFD
     private void clearVFD(OutputStream out) throws IOException {
         byte[] clearCommand = new byte[]{0x0C};  // Exemplo de comando para limpar a tela
         out.write(clearCommand);
