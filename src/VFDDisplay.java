@@ -10,7 +10,8 @@ import java.util.Random;
 public class VFDDisplay {
     private SerialPort serialPort;
     private Connection connection;
-    private String lastValue = "0000"; // Armazena o último valor enviado ao VFD
+    private String lastValuePosicao = "0000"; // Armazena o último valor enviado ao VFD
+    private String lastValueTerminal = "0000"; // Armazena o último valor enviado ao VFD
     private Random random = new Random(); // Instância para gerar números aleatórios
 
     private long zeroValueInterval = 1; // Intervalo para mensagens quando o valor da comanda é zero (em segundos)
@@ -43,28 +44,57 @@ public class VFDDisplay {
         }
     }
 
-    // Método para obter o valor da venda do banco de dados
-    public String getValorVenda() {
+    public String getValorVendaPosicao() {
         String comandasValor = "0000"; // Valor padrão
-        String query = "SELECT SUM(valor) AS soma FROM \n" +
+        String query = "SELECT SUM(valor) AS posicao FROM \n" +
                 "(\n" +
                 "    SELECT ISNULL(SUM(valor), 0) AS valor \n" +
                 "    FROM Comandas_Itens \n" +
-                "    WHERE Comanda IN (SELECT Comanda FROM Comanda WHERE Posicao IS NOT NULL OR Terminal IS NOT NULL) AND STATUS IS NULL \n" +
+                "    WHERE Comanda IN (SELECT Comanda FROM Comanda WHERE Posicao IS NOT NULL) AND STATUS IS NULL\n" +
                 "    UNION \n" +
                 "    SELECT ISNULL(SUM(valor), 0) AS valor \n" +
                 "    FROM Comandas_Detalhes \n" +
-                "    WHERE Comanda IN (SELECT Comanda FROM Comanda WHERE Posicao IS NOT NULL OR Terminal IS NOT NULL) AND STATUS IS NULL\n" +
+                "    WHERE Comanda IN (SELECT Comanda FROM Comanda WHERE Posicao IS NOT NULL) AND STATUS IS NULL\n" +
                 ") AS TESTE;";
 
         if (connection != null) {
             try (Statement statement = connection.createStatement();
-                 ResultSet resultSet = statement.executeQuery(query)) {
-
+                 ResultSet resultSet = statement.executeQuery(query))
+            {
                 if (resultSet.next()) {
-                    comandasValor = resultSet.getString("soma");
+                    comandasValor = resultSet.getString("posicao");
                 }
+            } catch (SQLException e) {
+                System.err.println("Erro ao executar consulta SQL: " + e.getMessage());
+            }
+        } else {
+            System.err.println("A conexão com o banco de dados não foi estabelecida.");
+        }
 
+        return comandasValor;
+    }
+
+    // Método para obter o valor da venda baseado no terminal
+    public String getValorVendaTerminal() {
+        String comandasValor = "0000"; // Valor padrão
+        String query = "SELECT SUM(valor) AS terminal FROM \n" +
+                "(\n" +
+                "    SELECT ISNULL(SUM(valor), 0) AS valor \n" +
+                "    FROM Comandas_Itens \n" +
+                "    WHERE Comanda IN (SELECT Comanda FROM Comanda WHERE Terminal IS NOT NULL) AND STATUS IS NULL\n" +
+                "    UNION \n" +
+                "    SELECT ISNULL(SUM(valor), 0) AS valor \n" +
+                "    FROM Comandas_Detalhes \n" +
+                "    WHERE Comanda IN (SELECT Comanda FROM Comanda WHERE Terminal IS NOT NULL) AND STATUS IS NULL\n" +
+                ") AS TESTE;";
+
+        if (connection != null) {
+            try (Statement statement = connection.createStatement();
+                 ResultSet resultSet = statement.executeQuery(query))
+            {
+                if (resultSet.next()) {
+                    comandasValor = resultSet.getString("terminal");
+                }
             } catch (SQLException e) {
                 System.err.println("Erro ao executar consulta SQL: " + e.getMessage());
             }
@@ -109,14 +139,16 @@ public class VFDDisplay {
 
     // Método para verificar e atualizar o VFD com mensagem temporária se o valor voltar a zero
     private void checkAndUpdateVFD() {
-        String currentValue = getValorVenda(); // Obtém o valor atual da venda
+        String currentValuePosicao = getValorVendaPosicao(); // Obtém o valor atual da venda pela posição
+        String currentValueTerminal = getValorVendaTerminal(); // Obtém o valor atual da venda pelo terminal
 
-        // Se o valor da venda for 0 ou nulo, exibe uma mensagem temporária seguida de mensagem estática
-        if (currentValue == null || currentValue.equals("0") || currentValue.equals("0.00")) {
-            if (!lastValue.equals("0")) {
+
+        // Verifica a venda pela posição
+        if (currentValuePosicao == null || currentValuePosicao.equals("0") || currentValuePosicao.equals("0.00")) {
+            if (!lastValuePosicao.equals("0")) {
                 // Exibe uma mensagem temporária "Venda zerada. Verifique os itens."
                 sendToVFD("  Volte sempre!!");
-                lastValue = "0"; // Atualiza o último valor
+                lastValuePosicao = "0"; // Atualiza o último valor
 
                 // Aguarda alguns segundos antes de exibir a mensagem estática
                 ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -126,12 +158,34 @@ public class VFDDisplay {
                     sendToVFD(randomMessage);
                 }, temporaryMessageDuration, TimeUnit.SECONDS);
             }
-        } else if (!currentValue.equals(lastValue)) {
+        } else if (!currentValuePosicao.equals(lastValuePosicao)) {
             // Atualiza o display com o valor da venda se for diferente do último exibido
-            sendToVFD("Valor R$" + currentValue);
-            lastValue = currentValue; // Atualiza o último valor enviado
+            sendToVFD("Valor R$" + currentValuePosicao);
+            lastValuePosicao = currentValuePosicao; // Atualiza o último valor enviado
+
         }
-    }
+
+        if (currentValueTerminal == null || currentValueTerminal.equals("0") || currentValueTerminal.equals("0.00")) {
+            if (!lastValueTerminal.equals("0")) {
+                // Exibe uma mensagem temporária "Venda zerada. Verifique os itens."
+                sendToVFD("Volte sempre!!");
+                lastValueTerminal = "0"; // Atualiza o último valor
+
+                // Aguarda alguns segundos antes de exibir a mensagem estática
+                ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+                scheduler.schedule(() -> {
+                    // Escolhe uma mensagem aleatória para exibir após a mensagem temporária
+                    String randomMessage = zeroValueMessages[random.nextInt(zeroValueMessages.length)];
+                    sendToVFD(randomMessage);
+                }, temporaryMessageDuration, TimeUnit.SECONDS);
+            }
+        } else if (!currentValueTerminal.equals(lastValueTerminal)) {
+            // Atualiza o display com o valor da venda se for diferente do último exibido
+            sendToVFD("Consumo R$" + currentValueTerminal);
+            lastValueTerminal = currentValueTerminal; // Atualiza o último valor enviado
+        }
+
+        }
 
     // Método para iniciar a verificação periódica com intervalos variáveis
     public void startMonitoring() {
